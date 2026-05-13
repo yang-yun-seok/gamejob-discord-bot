@@ -1,6 +1,13 @@
 name: Gamejob Discord Bot
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/gamejob-discord-bot.yml"
+      - "main.py"
+      - "requirements.txt"
   schedule:
     - cron: "0 * * * *"
   workflow_dispatch:
@@ -36,7 +43,7 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           GAMEJOB_TARGET_URL: ${{ vars.GAMEJOB_TARGET_URL }}
-          SEED_ONLY_ON_FIRST_RUN: ${{ vars.SEED_ONLY_ON_FIRST_RUN || 'false' }}
+          SEED_ONLY_ON_FIRST_RUN: ${{ vars.SEED_ONLY_ON_FIRST_RUN || 'true' }}
           STATE_FILE: sent_jobs.txt
           STATE_LIMIT: ${{ vars.STATE_LIMIT || '500' }}
           REQUEST_TIMEOUT_SECONDS: ${{ vars.REQUEST_TIMEOUT_SECONDS || '20' }}
@@ -64,4 +71,3 @@ jobs:
       - name: Fail job if scraper failed
         if: steps.scraper.outcome == 'failure'
         run: exit 1
-

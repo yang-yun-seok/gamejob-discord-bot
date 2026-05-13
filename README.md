@@ -26,6 +26,7 @@ This repository runs a GitHub Actions bot that checks a Gamejob listing URL and 
 ## Optional configuration
 
 - `SEED_ONLY_ON_FIRST_RUN`
+  - Default: `true`
   - If `true`, the first run stores the current postings without sending them.
 - `STATE_LIMIT`
   - Default: `500`

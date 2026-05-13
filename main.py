@@ -19,6 +19,11 @@ DEFAULT_STATE_FILE = "sent_jobs.txt"
 DEFAULT_STATE_LIMIT = 500
 DEFAULT_TIMEOUT_SECONDS = 20
 DEFAULT_DISCORD_RETRIES = 3
+JOB_CONTAINER_SELECTORS = (
+    "table.tblList tbody tr",
+    ".list .devItem",
+    ".devItem",
+)
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -165,6 +170,69 @@ def extract_job_id(link: str) -> str:
     return link
 
 
+def extract_text(node: BeautifulSoup | None, selector: str) -> str:
+    if node is None:
+        return ""
+
+    target = node.select_one(selector)
+    if target is None:
+        return ""
+
+    return clean_text(target.get_text(" ", strip=True))
+
+
+def extract_info_values(node: BeautifulSoup) -> tuple[str, ...]:
+    info_values = tuple(
+        clean_text(span.get_text(" ", strip=True))
+        for span in node.select("p.info span")
+        if clean_text(span.get_text(" ", strip=True))
+    )
+    if info_values:
+        return info_values
+
+    desc_text = extract_text(node, ".desc")
+    if desc_text:
+        return (desc_text,)
+
+    return ()
+
+
+def parse_job_post(node: BeautifulSoup) -> JobPost | None:
+    link_tag = node.select_one(
+        "div.tit > a[href*='/Recruit/GI_Read/View'], "
+        ".tit a[href*='/Recruit/GI_Read/View'], "
+        ".tit a[href*='GI_No=']"
+    )
+    if link_tag is None:
+        return None
+
+    href = clean_text(link_tag.get("href", ""))
+    if not href:
+        return None
+
+    link = urljoin(BASE_URL, href)
+    title = clean_text(link_tag.get_text(" ", strip=True))
+    company = (
+        extract_text(node, "div.company strong")
+        or extract_text(node, ".coName")
+        or extract_text(node, "a[href*='/Company/Detail'] strong")
+        or "-"
+    )
+    info = extract_info_values(node)
+    deadline = extract_text(node, "span.date") or "-"
+    posted_at = extract_text(node, "span.modifyDate") or "-"
+
+    return JobPost(
+        job_id=extract_job_id(link),
+        title=title or "-",
+        company=company,
+        link=link,
+        info=info,
+        deadline=deadline,
+        posted_at=posted_at,
+    )
+
+
 def create_session() -> requests.Session:
     session = requests.Session()
     session.headers.update({"User-Agent": USER_AGENT})
@@ -181,56 +249,34 @@ def fetch_job_posts(
     response.encoding = response.apparent_encoding or response.encoding
 
     soup = BeautifulSoup(response.text, "html.parser")
-    rows = soup.select("table.tblList tbody tr")
+    job_nodes = []
+    for selector in JOB_CONTAINER_SELECTORS:
+        nodes = soup.select(selector)
+        if nodes:
+            job_nodes = nodes
+            break
 
-    if not rows:
-        if NO_RESULTS_MARKER in response.text:
+    if not job_nodes:
+        if NO_RESULTS_MARKER in soup.get_text(" ", strip=True):
             return []
         raise RuntimeError(
-            "Could not find job rows on the page. "
+            "Could not find job postings on the page. "
             "The page structure may have changed or the target URL is invalid."
         )
 
     posts: list[JobPost] = []
     seen_ids: set[str] = set()
 
-    for row in rows:
-        link_tag = row.select_one("div.tit > a[href*='/Recruit/GI_Read/View']")
-        if link_tag is None:
+    for node in job_nodes:
+        post = parse_job_post(node)
+        if post is None:
             continue
 
-        href = clean_text(link_tag.get("href", ""))
-        if not href:
+        if post.job_id in seen_ids:
             continue
 
-        link = urljoin(BASE_URL, href)
-        job_id = extract_job_id(link)
-
-        if job_id in seen_ids:
-            continue
-
-        company_tag = row.select_one("div.company strong")
-        title = clean_text(link_tag.get_text(" ", strip=True))
-        company = clean_text(company_tag.get_text(" ", strip=True)) if company_tag else "-"
-        info = tuple(
-            clean_text(span.get_text(" ", strip=True))
-            for span in row.select("p.info span")
-            if clean_text(span.get_text(" ", strip=True))
-        )
-        deadline_tag = row.select_one("span.date")
-        posted_tag = row.select_one("span.modifyDate")
-
-        post = JobPost(
-            job_id=job_id,
-            title=title or "-",
-            company=company or "-",
-            link=link,
-            info=info,
-            deadline=clean_text(deadline_tag.get_text(" ", strip=True)) if deadline_tag else "-",
-            posted_at=clean_text(posted_tag.get_text(" ", strip=True)) if posted_tag else "-",
-        )
         posts.append(post)
-        seen_ids.add(job_id)
+        seen_ids.add(post.job_id)
 
     return posts
 
@@ -329,7 +375,7 @@ def main() -> int:
     state_limit = get_int_env("STATE_LIMIT", DEFAULT_STATE_LIMIT)
     timeout_seconds = get_int_env("REQUEST_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)
     max_retries = get_int_env("DISCORD_MAX_RETRIES", DEFAULT_DISCORD_RETRIES)
-    seed_only_on_first_run = get_bool_env("SEED_ONLY_ON_FIRST_RUN", default=False)
+    seed_only_on_first_run = get_bool_env("SEED_ONLY_ON_FIRST_RUN", default=True)
 
     store = SentJobStore(state_file, state_limit)
     session = create_session()
