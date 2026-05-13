@@ -1,0 +1,67 @@
+name: Gamejob Discord Bot
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: gamejob-discord-bot-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run scraper
+        id: scraper
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GAMEJOB_TARGET_URL: ${{ vars.GAMEJOB_TARGET_URL }}
+          SEED_ONLY_ON_FIRST_RUN: ${{ vars.SEED_ONLY_ON_FIRST_RUN || 'false' }}
+          STATE_FILE: sent_jobs.txt
+          STATE_LIMIT: ${{ vars.STATE_LIMIT || '500' }}
+          REQUEST_TIMEOUT_SECONDS: ${{ vars.REQUEST_TIMEOUT_SECONDS || '20' }}
+          DISCORD_MAX_RETRIES: ${{ vars.DISCORD_MAX_RETRIES || '3' }}
+        run: python main.py
+
+      - name: Commit state file
+        if: always()
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sent_jobs.txt
+
+          if git diff --cached --quiet; then
+            echo "No state changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Update sent jobs state"
+          git pull --rebase origin "$BRANCH_NAME"
+          git push origin HEAD:"$BRANCH_NAME"
+
+      - name: Fail job if scraper failed
+        if: steps.scraper.outcome == 'failure'
+        run: exit 1
+
