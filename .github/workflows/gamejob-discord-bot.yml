@@ -46,7 +46,7 @@ jobs:
           SEED_ONLY_ON_FIRST_RUN: ${{ vars.SEED_ONLY_ON_FIRST_RUN || 'false' }}
           STATE_FILE: sent_jobs.txt
           STATE_LIMIT: ${{ vars.STATE_LIMIT || '500' }}
-          REQUEST_TIMEOUT_SECONDS: ${{ vars.REQUEST_TIMEOUT_SECONDS || '20' }}
+          REQUEST_TIMEOUT_SECONDS: ${{ vars.REQUEST_TIMEOUT_SECONDS || '40' }}
           DISCORD_MAX_RETRIES: ${{ vars.DISCORD_MAX_RETRIES || '3' }}
         run: python main.py
 

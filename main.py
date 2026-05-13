@@ -13,11 +13,13 @@ from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 BASE_URL = "https://www.gamejob.co.kr"
 DEFAULT_STATE_FILE = "sent_jobs.txt"
 DEFAULT_STATE_LIMIT = 500
-DEFAULT_TIMEOUT_SECONDS = 20
+DEFAULT_TIMEOUT_SECONDS = 40
 DEFAULT_DISCORD_RETRIES = 3
 JOB_CONTAINER_SELECTORS = (
     "table.tblList tbody tr",
@@ -236,6 +238,19 @@ def parse_job_post(node: BeautifulSoup) -> JobPost | None:
 def create_session() -> requests.Session:
     session = requests.Session()
     session.headers.update({"User-Agent": USER_AGENT})
+    retry = Retry(
+        total=3,
+        connect=3,
+        read=3,
+        status=3,
+        backoff_factor=1.5,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset({"GET"}),
+        respect_retry_after_header=True,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
     return session
 
 
