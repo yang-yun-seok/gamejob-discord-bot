@@ -375,7 +375,7 @@ def main() -> int:
     state_limit = get_int_env("STATE_LIMIT", DEFAULT_STATE_LIMIT)
     timeout_seconds = get_int_env("REQUEST_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)
     max_retries = get_int_env("DISCORD_MAX_RETRIES", DEFAULT_DISCORD_RETRIES)
-    seed_only_on_first_run = get_bool_env("SEED_ONLY_ON_FIRST_RUN", default=True)
+    seed_only_on_first_run = get_bool_env("SEED_ONLY_ON_FIRST_RUN", default=False)
 
     store = SentJobStore(state_file, state_limit)
     session = create_session()
