@@ -42,7 +42,6 @@ jobs:
 
       - name: Run scraper
         id: scraper
-        continue-on-error: true
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           GAMEJOB_TARGET_URL: ${{ vars.GAMEJOB_TARGET_URL }}
@@ -51,7 +50,8 @@ jobs:
           STATE_LIMIT: ${{ vars.STATE_LIMIT || '500' }}
           REQUEST_TIMEOUT_SECONDS: ${{ vars.REQUEST_TIMEOUT_SECONDS || '40' }}
           DISCORD_MAX_RETRIES: ${{ vars.DISCORD_MAX_RETRIES || '3' }}
-        run: python main.py
+          PYTHONUNBUFFERED: "1"
+        run: python -u main.py
 
       - name: Commit state file
         if: always()
@@ -60,6 +60,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [ ! -f sent_jobs.txt ]; then
+            echo "sent_jobs.txt does not exist. Skipping commit."
+            exit 0
+          fi
 
           git add sent_jobs.txt
 
@@ -71,7 +76,3 @@ jobs:
           git commit -m "Update sent jobs state"
           git pull --rebase origin "$BRANCH_NAME"
           git push origin HEAD:"$BRANCH_NAME"
-
-      - name: Fail job if scraper failed
-        if: steps.scraper.outcome == 'failure'
-        run: exit 1
