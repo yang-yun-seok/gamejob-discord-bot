@@ -10,17 +10,19 @@ on:
       - "requirements.txt"
 
   schedule:
-    - cron: "0 * * * *"
+    # Avoid the top of the hour, when scheduled Actions runs are most delayed.
+    - cron: "17 * * * *"
 
   workflow_dispatch:
 
 concurrency:
-  group: gamejob-discord-bot-${{ github.head_ref || github.ref_name }}
+  group: gamejob-discord-bot-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     permissions:
       contents: write
@@ -29,7 +31,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.head_ref || github.ref_name }}
+          ref: ${{ github.event.repository.default_branch }}
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -50,13 +52,33 @@ jobs:
           STATE_LIMIT: ${{ vars.STATE_LIMIT || '500' }}
           REQUEST_TIMEOUT_SECONDS: ${{ vars.REQUEST_TIMEOUT_SECONDS || '40' }}
           DISCORD_MAX_RETRIES: ${{ vars.DISCORD_MAX_RETRIES || '3' }}
+          SCRAPER_MAX_ATTEMPTS: ${{ vars.SCRAPER_MAX_ATTEMPTS || '3' }}
+          SCRAPER_RETRY_DELAY_SECONDS: ${{ vars.SCRAPER_RETRY_DELAY_SECONDS || '60' }}
           PYTHONUNBUFFERED: "1"
-        run: python -u main.py
+        run: |
+          attempt=1
+
+          while [ "$attempt" -le "$SCRAPER_MAX_ATTEMPTS" ]; do
+            echo "Starting scraper attempt $attempt/$SCRAPER_MAX_ATTEMPTS."
+
+            if python -u main.py; then
+              exit 0
+            fi
+
+            if [ "$attempt" -eq "$SCRAPER_MAX_ATTEMPTS" ]; then
+              echo "::error::Scraper failed after $SCRAPER_MAX_ATTEMPTS attempts."
+              exit 1
+            fi
+
+            echo "::warning::Scraper attempt $attempt failed. Retrying in $SCRAPER_RETRY_DELAY_SECONDS seconds."
+            sleep "$SCRAPER_RETRY_DELAY_SECONDS"
+            attempt=$((attempt + 1))
+          done
 
       - name: Commit state file
         if: always()
         env:
-          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+          BRANCH_NAME: ${{ github.event.repository.default_branch }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
