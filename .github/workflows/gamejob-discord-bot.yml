@@ -11,7 +11,7 @@ on:
 
   schedule:
     # Avoid the top of the hour, when scheduled Actions runs are most delayed.
-    - cron: "17 * * * *"
+    - cron: "40 * * * *"
 
   workflow_dispatch:
 
